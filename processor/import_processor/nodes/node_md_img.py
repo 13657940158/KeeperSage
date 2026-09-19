@@ -1,3 +1,5 @@
+import logging
+
 from processor.import_processor.base import BaseNode
 from processor.import_processor.state import ImportGraphState
 
@@ -10,6 +12,6 @@ class NodeMDImg(BaseNode):
     name = "node_md_img"
 
     def process(self, state: ImportGraphState):
-
+        logging.info(f"{self.name}节点开始执行")
 
         return state
