@@ -13,5 +13,6 @@ class NodeMDImg(BaseNode):
 
     def process(self, state: ImportGraphState):
         logging.info(f"{self.name}节点开始执行")
-
+        #1. 参数处理
+        md_content,md_path_obj,images_dir = self._step_1_get_content(state)
         return state
