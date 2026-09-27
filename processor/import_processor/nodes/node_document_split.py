@@ -1,5 +1,8 @@
-
+import json
 import re
+from pathlib import Path
+from sys import path
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from processor.import_processor.base import BaseNode
 from processor.import_processor.exceptions import StateFieldError
@@ -24,11 +27,6 @@ class NodeDocumentSplit(BaseNode):
         sections = self._step_3_handle_no_title(content, sections, title_count, file_title)
         # 4.快精细化处理（长切短合）
         sections = self._step_4_refine_chunks(sections)
-        for section in sections:
-            print(f"{section['content']}")
-            print("============================================================================")
-        print(f"{title_count}")
-        print(f"{lines_count}")
         #5.打印日志
         self._step_5_print_stats(lines_count, sections)
         # 6.备份
@@ -124,10 +122,22 @@ class NodeDocumentSplit(BaseNode):
 
     def _step_5_print_stats(self, lines_count, sections):
         print("node_document_split:步骤5：打印日志")
-        pass
+        chunk_num = len(sections)
+        # 输出核心统计信息：原始行数/最终Chunk数/首个Chunk预览
+        self.logger.info("-" * 50 + " 文档切分统计信息 " + "-" * 50)
+        self.logger.info(f"MD原始文本总行数：{lines_count}")
+        self.logger.info(f"最终生成Chunk数量：{chunk_num}")
 
     def _step_6_backup(self, state, sections):
         print("node_document_split:步骤6：备份")
+        path=Path(state.get("md_path")).parent /  f'{state.get("file_title")}_chunks.json'
+        with open(path,"w",encoding="utf-8") as f:
+            json.dump(
+                sections,
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         pass
     #切分方法长
     def split_long_section(self, section:Dict[str,str]):
@@ -170,9 +180,50 @@ class NodeDocumentSplit(BaseNode):
 
         return sub_sections
     #短合
-    def merge_short_sections(self, refined_split):
+    def merge_short_sections(self, sections):
         print("node_document_split:步骤4方法2短合")
-        return refined_split
+        # 边界处理：空列表直接返回，避免后续索引报错
+        if not sections:
+            self.logger.debug("待合并Chunk列表为空，直接返回")
+            return []
+
+        merged_sections = []  # 最终合并结果
+        current_chunk = None  # 迭代累加器：保存当前待合并的Chunk
+
+        for sec in sections:
+            # 初始化：第一个Chunk直接作为当前待合并块
+            if current_chunk is None:
+                current_chunk = sec
+                continue
+
+            # 合并条件：1.当前块长度不足阈值 2.与下一块同父标题（同属一个原章节）
+            is_current_short = len(current_chunk["content"]) < self.config.min_content_length
+            is_same_parent = current_chunk.get("parent_title") == sec.get("parent_title")
+
+            if is_current_short and is_same_parent:
+                # 合并前清理：去掉下一块开头重复的父标题，避免内容冗余
+                parent_title = sec.get("parent_title", "")
+                next_content = sec["content"]
+                if parent_title and next_content.startswith(parent_title):
+                    next_content = next_content[len(parent_title):].lstrip()
+                # 合并内容：空行分隔，保证格式整洁
+                current_chunk["content"] += "\n\n" + next_content
+                # 更新子Chunk序号：保留最新序号，便于溯源
+                if "part" in sec:
+                    current_chunk["part"] = sec["part"]
+                self.logger.debug(
+                    f"合并短Chunk：{current_chunk.get('parent_title')} → 累计长度{len(current_chunk['content'])}")
+            else:
+                # 不满足合并条件：将当前块加入结果，切换为新的待合并块
+                merged_sections.append(current_chunk)
+                current_chunk = sec
+
+        # 循环结束后，将最后一个待合并块加入结果
+        if current_chunk is not None:
+            merged_sections.append(current_chunk)
+
+        self.logger.debug(f"短Chunk合并完成：原{len(sections)}个 → 合并后{len(merged_sections)}个")
+        return merged_sections
 
 
 if __name__ == '__main__':
