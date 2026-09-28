@@ -5,12 +5,15 @@ from click import prompt
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from openai.types.beta.threads import message
+from pymilvus import MilvusClient, DataType
 
 from config.lm_config import lm_config
+from config.milvus_config import milvus_config
 from processor.import_processor.base import BaseNode
 from processor.import_processor.exceptions import StateFieldError
 from processor.import_processor.state import ImportGraphState
 from utils.embedding_utils import generate_embeddings
+from utils.milvus_utils import get_milvus_client
 
 
 class NodeItemNameRecognition(BaseNode):
@@ -171,7 +174,62 @@ class NodeItemNameRecognition(BaseNode):
 
     def _step_6_save_to_milvus(self, state, file_title, item_name, dense_vector, sparse_vector):
         print("node_item_name_recognition:步骤6存入milvus向量库")
-        pass
+        milvus_url = milvus_config.milvus_url
+        collection_name = milvus_config.collection_name
+        if not milvus_url or not collection_name:
+            raise Exception("Milvus配置错误")
+        client = get_milvus_client()
+
+        # 建表
+        collection_name = milvus_config.item_name_collection
+        #数据结构（字段）
+        schema = client.create_schema(auto_id=True,enable_dynamic_field=True)
+        #主键
+        schema.add_field(
+            field_name="pk",
+            datatype=DataType.INT64,
+            is_primary=True,
+            auto_id=True,
+        )
+        schema.add_field(
+            field_name="file_title",
+            datatype=DataType.VARCHAR,
+            max_length=65536
+        )
+        schema.add_field(
+            field_name="item_name",
+            datatype=DataType.FLOAT_VECTOR,
+            max_length=65536
+        )
+        #稠密向量
+        schema.add_field(
+            field_name="dense_vector",
+            datatype=DataType.FLOAT_VECTOR,
+            dim=1024#稠密
+        )
+        #稀疏向量
+        schema.add_field(
+            field_name="sparse_vector",
+            datatype=DataType.SPARSE_FLOAT_VECTOR,
+        )
+
+        #索引
+        index_params = client.prepare_index_params()
+        index_params.add_index(
+            field_name="dense_vector",
+            index_name="dense_vector_index",
+            index_type="IVF_FLAT",#分组精确搜索
+            metric_type="COSINE",
+        )
+
+        #插入向量
+        data = {
+            "file_title":file_title,
+            "item_name":item_name,
+            "dense_vector":dense_vector,
+            "sparse_vector":sparse_vector,
+        }
+        client.insert(collection_name,data)
 
 if __name__ == "__main__":
     node = NodeItemNameRecognition()
