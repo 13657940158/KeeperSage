@@ -1,11 +1,12 @@
 import json
+from pathlib import Path
 from typing import  Dict, List
 
 from click import prompt
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from openai.types.beta.threads import message
-from pymilvus import MilvusClient, DataType
+from pymilvus import MilvusClient, DataType, milvus_client
 
 from config.lm_config import lm_config
 from config.milvus_config import milvus_config
@@ -13,7 +14,7 @@ from processor.import_processor.base import BaseNode
 from processor.import_processor.exceptions import StateFieldError
 from processor.import_processor.state import ImportGraphState
 from utils.embedding_utils import generate_embeddings
-from utils.milvus_utils import get_milvus_client
+from utils.milvus_utils import get_milvus_client, escape_milvus_string
 
 
 class NodeItemNameRecognition(BaseNode):
@@ -52,7 +53,15 @@ class NodeItemNameRecognition(BaseNode):
         print(f"itemname:{item_name}")
         # 步骤4：回填商品名称到状态和切片
         self._step_4_update_chunks(state, chunks, item_name)
-
+        # 回填数据(item_name -> chunks)
+        # path = "D:\doc\output\H3C\H3C_new_2_chunks.json"
+        # with open(path, "w", encoding="utf-8") as f:
+        #     json.dump(
+        #         chunks,
+        #         f,
+        #         ensure_ascii=False,
+        #         indent=2
+        #     )
         # 步骤5：为商品名称生成稠密/稀疏向量
         dense_vector, sparse_vector = self._step_5_generate_vectors(item_name)
         print(f"dense_vector:{dense_vector}")
@@ -66,6 +75,7 @@ class NodeItemNameRecognition(BaseNode):
         return state
 
     def _step_1_get_inputs(self, state) ->(str,List[Dict]) :
+        print("node_item_name_recognition:步骤1：参数处理")
         file_title = state.get("file_title")
         if not file_title:
             raise StateFieldError(field_name="file_title", message="文件标题不能为空", expected_type=str)
@@ -175,13 +185,12 @@ class NodeItemNameRecognition(BaseNode):
     def _step_6_save_to_milvus(self, state, file_title, item_name, dense_vector, sparse_vector):
         print("node_item_name_recognition:步骤6存入milvus向量库")
         milvus_url = milvus_config.milvus_url
-        collection_name = milvus_config.collection_name
+        #建表
+        collection_name = milvus_config.item_name_collection
         if not milvus_url or not collection_name:
             raise Exception("Milvus配置错误")
         client = get_milvus_client()
 
-        # 建表
-        collection_name = milvus_config.item_name_collection
         #数据结构（字段）
         schema = client.create_schema(auto_id=True,enable_dynamic_field=True)
         #主键
@@ -194,12 +203,12 @@ class NodeItemNameRecognition(BaseNode):
         schema.add_field(
             field_name="file_title",
             datatype=DataType.VARCHAR,
-            max_length=65536
+            max_length=100
         )
         schema.add_field(
             field_name="item_name",
-            datatype=DataType.FLOAT_VECTOR,
-            max_length=65536
+            datatype=DataType.VARCHAR,
+            max_length=100
         )
         #稠密向量
         schema.add_field(
@@ -214,22 +223,58 @@ class NodeItemNameRecognition(BaseNode):
         )
 
         #索引
+        #为稠密向量
         index_params = client.prepare_index_params()
         index_params.add_index(
             field_name="dense_vector",
             index_name="dense_vector_index",
             index_type="IVF_FLAT",#分组精确搜索
             metric_type="COSINE",
+            params={"nlist": 128},#聚类数(影响检索精度和速度）
         )
+        # 为稀疏向量创建索引（SPARSE_INVERTED_INDEX：稀疏向量专用索引）
+        index_params.add_index(
+            field_name="sparse_vector",  # 字段名
+            index_name="sparse_vector_index",  # 索引名
+            index_type="SPARSE_INVERTED_INDEX",  # 索引类型
+            metric_type="IP",  # 相似度计算方式（内积）
+            params={
+                "inverted_index_algo": "DAAT_MAXSCORE",
+                # 高效的稀疏检索算法
 
-        #插入向量
+                "normalize": True,
+                # ↑ L2 归一化，让内积 (IP) 等价于余弦相似度
+
+                "quantization": "none"
+                # ↑ 关闭量化，保持原始精度：模型生成的向量已经压缩的一半的精度了（BGE_FP16=1），这里就不再压缩了
+                # "quantization": "none" → 存储原始向量，不压缩
+                # "quantization": "sq8" → 存储压缩后的向量（8-bit 量化
+            })
+
+        # 建表
+
+        if not client.has_collection(collection_name):
+            client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
+        # 3. 幂等性处理：删除同名商品数据（避免重复存储）
+        safe_item_name = escape_milvus_string(item_name)
+        # 构建过滤表达式：item_name等于目标值
+        filter_expr = f'item_name=="{safe_item_name}"'
+        # 删除符合条件的数据
+        client.delete(collection_name=collection_name, filter=filter_expr)
+
+        #插入一条
         data = {
             "file_title":file_title,
             "item_name":item_name,
             "dense_vector":dense_vector,
             "sparse_vector":sparse_vector,
         }
-        client.insert(collection_name,data)
+        client.insert(collection_name,[data])
+        client.load_collection(collection_name) #将表数据从存储引擎加载到搜索引擎，为了将来查询相似度用的
+        state["item_name"] = item_name
+        return state
+
+
 
 if __name__ == "__main__":
     node = NodeItemNameRecognition()
