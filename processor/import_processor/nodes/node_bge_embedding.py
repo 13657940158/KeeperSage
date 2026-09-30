@@ -26,6 +26,15 @@ class NodeBGEEmbedding(BaseNode):
             content=item.get("content")
             print(f"item_name:{item_name}")
             print(f"sparse_vector:{sparse_vector}")
+        # 回填数据(item_name -> chunks)
+        # path = r"D:\doc\output\H3C\H3C_new_3_chunks.json"
+        # with open(path, "w", encoding="utf-8") as f:
+        #     json.dump(
+        #         output_data,
+        #         f,
+        #         ensure_ascii=False,
+        #         indent=2
+        #     )
         # 3 返回结果
         state["chunks"] = output_data
 
