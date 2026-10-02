@@ -61,7 +61,7 @@ class NodeMDImg(BaseNode):
         md_path_obj = Path(md_path)
         if not md_path_obj.exists():
             raise FileExistsError(message=f"输入的文件不存在:{md_path}")
-        md_content = state["md_content"]
+        md_content = state.get("md_content")
 
         #测试共能代码，后期需要删除
         if not md_content:

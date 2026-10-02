@@ -31,7 +31,7 @@ class NodeDocumentSplit(BaseNode):
         self._step_5_print_stats(lines_count, sections)
         # 6.备份
         self._step_6_backup(state, sections)
-        state["chunks"] = None
+        state["chunks"] = sections
         return state
 
     def _step_1_get_inputs(self, state):
