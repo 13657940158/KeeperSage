@@ -169,7 +169,7 @@ class NodePDFToMD(BaseNode):
 if __name__ == "__main__":
     setup_logging()
     init_state={
-        "pdf_path":r"D:\doc\H3C.pdf",
+        "pdf_path":r"D:\doc\hak180.pdf",
         "file_dir":r"D:\doc\output",
     }
     node = NodePDFToMD()

@@ -165,7 +165,7 @@ class NodeDocumentSplit(BaseNode):
         #切分结果
         sub_sections = []
 
-        for index , chunk in enumerate(splitter.split(body),start=1):
+        for index , chunk in enumerate(splitter.split_text(body),start=1):
             text = chunk.strip()
             if not text:
                 continue

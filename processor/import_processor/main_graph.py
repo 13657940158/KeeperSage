@@ -86,7 +86,7 @@ if __name__ == "__main__":
     # 启用日志
     setup_logging()
     workflow = KBImportWorkflow()
-    init_state = {"import_file_path": r"D:\doc\output\H3C\H3C.md"}
+    init_state = {"import_file_path": r"D:\doc\HUAWEI MateStation S 12代酷睿版 用户指南-(PUC,Windows11_02,zh-cn).pdf"}
     for event in workflow.run(init_state,stream=True):
         print(f"state:{event}")
     # final_state = workflow.run(init_state,stream=False)
