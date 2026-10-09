@@ -107,11 +107,11 @@ class NodeImportMilvus(BaseNode):
         #字段申明
         schema.add_field(field_name="chunk_id", datatype=DataType.INT64, is_primary=True, auto_id=True)
         schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535)
-        schema.add_field(field_name="title", datatype=DataType.VARCHAR, max_length=100)
-        schema.add_field(field_name="parent_title", datatype=DataType.VARCHAR, max_length=100)
+        schema.add_field(field_name="title", datatype=DataType.VARCHAR, max_length=512)
+        schema.add_field(field_name="parent_title", datatype=DataType.VARCHAR, max_length=512)
         schema.add_field(field_name="part", datatype=DataType.INT8)
-        schema.add_field(field_name="file_title", datatype=DataType.VARCHAR, max_length=100)
-        schema.add_field(field_name="item_name", datatype=DataType.VARCHAR, max_length=100)
+        schema.add_field(field_name="file_title", datatype=DataType.VARCHAR, max_length=512)
+        schema.add_field(field_name="item_name", datatype=DataType.VARCHAR, max_length=256)
         schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
         schema.add_field(field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=vector_dimension)#1024维
 

@@ -1,4 +1,5 @@
 import json
+import os
 from typing import List, Dict
 
 from processor.import_processor.base import BaseNode
@@ -26,8 +27,9 @@ class NodeBGEEmbedding(BaseNode):
             content=item.get("content")
             print(f"item_name:{item_name}")
             print(f"sparse_vector:{sparse_vector}")
-        # 回填数据(item_name -> chunks)
-        # path = r"D:\doc\output\H3C\H3C_new_3_chunks.json"
+        # out_dir = os.path.dirname(state.get("md_path"))  # md 所在目录，即 D:\doc\output\<文档名>
+        # file_title = state.get("file_title")
+        # path = os.path.join(out_dir, f"{file_title}_new_2_chunks.json")
         # with open(path, "w", encoding="utf-8") as f:
         #     json.dump(
         #         output_data,

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import  Dict, List
 
@@ -53,8 +54,10 @@ class NodeItemNameRecognition(BaseNode):
         print(f"itemname:{item_name}")
         # 步骤4：回填商品名称到状态和切片
         self._step_4_update_chunks(state, chunks, item_name)
-        # 回填数据(item_name -> chunks)
-        # path = "D:\doc\output\H3C\H3C_new_2_chunks.json"
+        # path = os.path.join(
+        #     os.path.dirname(state.get("md_path")),
+        #     f"{state.get('file_title')}_new_chunks.json",
+        # )
         # with open(path, "w", encoding="utf-8") as f:
         #     json.dump(
         #         chunks,
