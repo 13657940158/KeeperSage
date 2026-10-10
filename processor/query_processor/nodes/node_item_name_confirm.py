@@ -2,14 +2,18 @@ import json
 from typing import Dict, List
 
 from langchain_core.messages import SystemMessage, HumanMessage
+from pymilvus.milvus_client import milvus_client
 from sympy import content
 
+from config.milvus_config import milvus_config
 from processor.query_processor.base import NodeBase
 from processor.query_processor.prompt.item_name_confirm import ITEM_NAME_EXTRACT_TEMPLATE, \
     ITEM_NAME_EXTRACT_SYSTEM_PROMPT
 from processor.query_processor.state import QueryGraphState
 from tool.logger import logger
+from utils.embedding_utils import generate_embeddings
 from utils.llm_utils import get_llm_client
+from utils.milvus_utils import get_milvus_client, create_hybrid_search_requests, hybrid_search
 from utils.mongo_history_utils import get_recent_messages, save_chat_message
 
 
@@ -45,10 +49,15 @@ class NodeItemNameConfirm(NodeBase):
         state["rewritten_query"] = rewritten_query
         state["item_names"] = item_names
         print("extract_res:",extract_res)
+
         #5 向量搜索（搜索知识库）#6 收索结果对齐（整理）
         align_result = {}
         if len(item_names) >= 0:
+            #vector
             query_results = self._step_5_vectorize_and_query(item_names)#检索米尔沃思
+            # print(f"query_results根据提取道德item_names的匹配结果:")
+            # for query_result in query_results:
+            #     print(query_result)
             align_result = self._step_6_align_item_names(query_results)#结果整理,需要存入state
         else:
             logger.info("Node: 未提取到商品名，跳过向量检索")
@@ -107,17 +116,57 @@ class NodeItemNameConfirm(NodeBase):
     #步骤五 向量化并检索
     def _step_5_vectorize_and_query(self, item_names)->List[Dict]:
         print("step_5:向量化检索，检索出来对应item_name的向量库中的相似的商品名称的列表")
-        result: List[Dict] = []
-        return result
+        results: List[Dict] = []#(大模型识别的可能名称:milvus的匹配结果集合)k:
+
+        #获得milvus的客户端
+        milvus_client = get_milvus_client()
+        collection_name=milvus_config.item_name_collection
+        #条件向量化
+        embeddings=generate_embeddings(item_names)
+        #相似性匹配
+        for i in range(len(item_names)):
+            dense_vector = embeddings.get("dense")[i]
+            sparse_vector = embeddings.get("sparse")[i]
+            reqs = create_hybrid_search_requests(dense_vector=dense_vector,sparse_vector=sparse_vector)
+            search_res=hybrid_search(
+                client=milvus_client,
+                collection_name=collection_name,
+                reqs=reqs,
+                ranker_weights=(0.8,0.2),
+                norm_score=True,
+                output_fields=["item_name"],
+            )
+        #返回
+        matches = []
+        if search_res and len(search_res)>0:
+            print("意图识别的向量搜索结果search_res:",search_res)
+            for hit in search_res[0]:
+                #将search_res中的匹配结果封装到matches中
+                matches.append({
+                    "item_name": hit.entity.get("item_name"),
+                    "score": hit.get("distance"),
+                })
+        #这两个值共同封装为result
+        results.append({
+            "extracted_name":item_names[i],#大模型提取的名称
+            "matches":matches,#大模型在milvus中提取的信息列表
+        })
+
+        return results
     #步骤六 结果对齐
     def _step_6_align_item_names(self, query_results: List[Dict])->Dict:
-        print("step_6:对齐结果")
+        print("step_6:对齐结果:")
+        #高于0.8为高度匹配，直接封装结果你直接变成要搜索的item_name
+        #高于0.6低于0.8为可能匹配，返回answer，有可选项
+        #低于0.6无匹配结果
         return {
             "confirmed_item_names":[],#确认后的高分商品名称（>0.8）
             "options":[] #可能低分商品名称（>0.6）
         }
     def _step_7_check_confirmation(self, state,align_result,history)->Dict:
         print("step_7:状态stat信息,根据step_6高分低分对齐结果整理")
+        state["answer"]=""#如果有高于0.6的可选项options(反问用户，你想问的是xxx设备吗或者低于0.6（未找到产品）
+        state["item_names"]=[]#有高于0.8就封装
         return state
 
     def _step_8_write_history(self, state, session_id, rewritten_query, message_id):
@@ -128,7 +177,7 @@ if __name__ == "__main__":
 
     # 初始化图状态
     init_state = {
-        "original_query": "H3C是干啥子的？",
+        "original_query": "迅饶是干啥子的？",
         "session_id": 1,
     }
 
