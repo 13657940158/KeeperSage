@@ -131,7 +131,7 @@ class KBQueryWorkflow:
         if not self._compiled_app:
             self.compile()
         if stream:
-            return self._compiled_app.stream(initial_state)
+            return self._compiled_app.stream(initial_state)#惰性节点，要用for循环调用
         else:
             return self._compiled_app.invoke(initial_state)
 
@@ -144,11 +144,7 @@ if __name__ == "__main__":
     init_state = {"original_query": "如何使用万用表测量电压？"}
 
     workflow = KBQueryWorkflow()
-    # final_state = workflow.run(init_state)
-    # logger.info(final_state)
-    # 流式输出
-    for chunk in workflow.run(init_state, stream=True):
-        logger.warning(chunk)
-
-    # 打印编译后的图结构
-    logger.info(workflow.compile().get_graph().draw_ascii())
+    response = workflow.run({"original_query":"哥么，迅饶是个啥玩意，我咋没听过？","session_id":"1"},stream=True)
+    # print(response)
+    for res in response:
+        print(res)
