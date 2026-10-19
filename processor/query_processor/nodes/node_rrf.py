@@ -25,7 +25,7 @@ class NodeRrf(NodeBase):
 
         # TODO
         logger.info(f"【{self.name}】节点逻辑")
-        #1. 参数处理
+        #1. 参数处理,
         embedding_chunks=state.get("embedding_chunks")#融合
         hyde_embedding_chunks=state.get("hyde_embedding_chunks")#融合
         embedding_chunks_list = [doc.get("entity") for doc in embedding_chunks]
@@ -38,7 +38,7 @@ class NodeRrf(NodeBase):
             (embedding_chunks_list,1.0),
             (hyde_embedding_chunks_list,1.0)#元组的权重和比重
         ]
-        #3. 使用rrf算法格式对融合对象进行融合
+        #3. 使用rrf算法格式对融合对象进行融合 向量节点+假设性节点融合，mcp联网节点不进行融合。
         rrf_merge_results =self._rrf_merge(rrf_inputs)
 
         #4. 返回结果处理
@@ -56,6 +56,8 @@ class NodeRrf(NodeBase):
             for rank ,doc in enumerate(rrf_input):
                 chunk_id = doc.get("chunk_id")
                 chunk_scores[chunk_id]= chunk_scores.get(chunk_id,0.0)+weight/(k+rank)#chunk id 和对应的分数
+                #融合算法rrf算法
+                #重复出现的权重会增加,累加评分
                 chunk_data.setdefault(chunk_id,doc)#chunk id 和 文档的内容
         #未排序的结果
         unsorted_results =[(chunk_data[cid],score) for cid,score in chunk_scores.items()]#一个元组类型的列表

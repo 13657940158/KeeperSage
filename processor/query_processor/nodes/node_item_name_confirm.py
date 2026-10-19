@@ -166,7 +166,7 @@ class NodeItemNameConfirm(NodeBase):
     def _step_6_align_item_names(self, query_results: List[Dict])->Dict:
         print("step_6:对齐结果:")
         confirmed_item_names: List[str] = []#高于0.8
-        options:List[str]=[]#高于0.6低于0.8
+        options:List[str]=[]#高于0.6低于0.8 #有可能都有值
         #高于0.8为高度匹配，直接封装结果你直接变成要搜索的item_name
         for res in query_results:
             extracted_name = (res.get("extracted_name","")or "").strip()#模型识别的商品名称
@@ -174,7 +174,7 @@ class NodeItemNameConfirm(NodeBase):
             if not matches:
                 continue
             high_results = [m for m in matches if m.get("score",0)>=0.8]#高分结果
-            mid_results = [m for m in matches if m.get("score", 0) >= 0.6]#中分结果
+            mid_results = [m for m in matches if 0.8>m.get("score", 0) >= 0.6]#中分结果
             ###################################################################################################################
             #特殊，只有一条结果高于0.8
             if len(high_results) == 1:
@@ -200,10 +200,9 @@ class NodeItemNameConfirm(NodeBase):
             if len(mid_results) > 0:
                 for mr in mid_results[:5]:
                     options.append(mr.get("item_name"))
+
             #####################################################################################################
         #低于0.6无匹配结果,都是空
-
-
         return {
             "confirmed_item_names":list(set(confirmed_item_names)),#确认后的高分商品名称（>0.8）
             "options": list(set(options))#可能低分商品名称（>0.6）
@@ -227,12 +226,14 @@ class NodeItemNameConfirm(NodeBase):
             #封装结果
             state["item_names"] = confirmed
             state["answer"]=""
+            return state #直接return可以避免options和confirm的都有值的问题
 
         #2 没命中，有备选(>0.6)
         if options:
             state["item_names"] = []
             options_str = ",".join(options)
             state["answer"]=f"请选择一个商品,您想问的是这个产品吗？{options_str}请明确一下型号"
+            return state
 
         #3 没命中
         if not confirmed and not options:
