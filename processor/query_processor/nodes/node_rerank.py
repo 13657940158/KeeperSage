@@ -36,9 +36,10 @@ class NodeRerank(NodeBase):
 
         # 4. 更新state
         state['reranked_docs'] = cutoff_docs
-
-        # 5. 返回state
+        print("=======================================================")
+        print(f"cutoff_docs:{cutoff_docs}")
         return state
+        # 5. 返回state
 
     def _step_1_merge_multi_source_docs(self, state):
         print("步骤1: 将web_doc和rrf_chunks节点的数据合并")
@@ -88,8 +89,24 @@ class NodeRerank(NodeBase):
 
     def _step_3_cliff_cutoff(self, reranked_docs):
         print("步骤3: 断崖测试(分数差距, 分数比率)去掉过低的匹配结果")
-        
-        return None
+        # 最多要多少结果
+        upper_bound = min(10, len(reranked_docs))
+        # 最少要多少结果
+        lower_bound = min(3, len(reranked_docs))
+        # 断崖位置
+        cutoff_pos = upper_bound
+        for index in range(lower_bound - 1, upper_bound - 1):
+            current_score = reranked_docs[index].get("score")
+            next_score = reranked_docs[index + 1].get("score")
+            # 分差
+            abs_gap = current_score - next_score
+            # 比率
+            rel_gap = abs_gap / (abs(current_score)+ 1e-6)
+
+            if abs_gap>=0.5 or rel_gap>=0.25:
+                cutoff_pos = index+1#找到了断崖位置
+                break
+        return reranked_docs[:cutoff_pos]
 
 
 if __name__ == "__main__":
