@@ -1,168 +1,118 @@
-"""
-    工程环境
-"""
-conda create -n py311 python=3.11
-conda activate py311
-python -m venv kb311
-.\Scripts\activate
+# KeeperSage Enterprise Document System
 
-"""
-    pytorch
-"""
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-pip uninstall torch torchvision torchaudio -y
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126 (5090)
-pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128 (5090)
-cuda开发工具：https://developer.nvidia.com/cuda-12-4-0-download-archive
-检查pytorch状态：python -c "import torch; print('CUDA Available:', torch.cuda.is_available())"
+An enterprise-grade RAG knowledge base: upload PDF/MD documents, and the system automatically parses, chunks, embeds, and indexes them — then answers questions through multi-source retrieval on a web UI, with streaming responses and inline image references.
 
-测试：
-import torch
-print(torch.cuda.is_available())  # 如果输出 True，说明成功认出显卡！
-print(torch.version.cuda)         # 这会显示你安装的 PyTorch 自带的 CUDA 版本（比如 12.1）
+> **End-to-end, independently built**: document parsing → hybrid retrieval → multi-route fusion → reranking → streaming generation, covering the full engineering pipeline of a RAG application from data ingestion to answer delivery.
 
-"""
-    mineru
-"""
-官方：https://opendatalab.github.io/MinerU/zh/
-官方：https://mineru.net/apiManage/docs
-pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
-pip install uv -i https://mirrors.aliyun.com/pypi/simple
-uv pip install -U "mineru[all]" -i https://mirrors.aliyun.com/pypi/simple
-测试： mineru --version
+---
 
-"""
-    mineru模型
-"""
-模型缓存：$env:MODELSCOPE_CACHE="D:\ai_models\modelscope_cache"
-下模型：mineru-models-download
-桌面客户端：https://mineru.net/
-测试：mineru -p xxx.pdf -o output --backend pipeline
+## Highlights
 
-"""
-    milvus
-"""
-pip uninstall -y pymilvus milvus-model FlagEmbedding
-uv add pymilvus[model] transformers FlagEmbedding
-pip install "pymilvus[model]" transformers FlagEmbedding
+- **Complete RAG pipelines**: Both ingestion (parsing / chunking / embedding / indexing) and querying (rewriting / retrieval / fusion / reranking / generation) are orchestrated as **LangGraph** state machines with node-level streaming and observability.
+- **Hybrid retrieval**: BGE-M3 produces both dense (semantic) and sparse (learned lexical) vectors, fused via weighted ranking — combining semantic generalization with precise keyword matching.
+- **Three parallel retrieval routes**: vanilla vector search / **HyDE** hypothetical-document retrieval / web search via the **MCP** protocol (Alibaba Cloud Bailian), improving recall through source diversity.
+- **Two-stage ranking**: Reciprocal Rank Fusion (RRF) merges multi-route results by rank, followed by Cross-Encoder reranking for precision.
+- **Multimodal document parsing**: MinerU converts PDFs to Markdown; images are captioned by a multimodal LLM and embedded alongside chunks, with original images surfaced in answers.
+- **Streaming Q&A**: Server-Sent Events push node-level progress and incremental answers in real time; the frontend renders answers with referenced images.
 
-"""
-    安装BGE-M3
-"""
-uv add pymilvus[model] transformers FlagEmbedding
-pip install "pymilvus[model]" transformers FlagEmbedding
-pip install modelscope
-执行脚本：python download_bgem3.py
-"""
-    from modelscope.hub.snapshot_download import snapshot_download
-    # 下载模型到当前目录下的 models/bge-m3 文件夹
-    model_dir = snapshot_download('BAAI/bge-m3', cache_dir='D:/ai_models/modelscope_cache/models')
-    print(f"模型已下载到: {model_dir}")
-"""
-测试：python -c "import torch; print('CUDA可用:', torch.cuda.is_available())"
-万一测试不可用：pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128 (仅限于5090)
+## Architecture
 
+```
+Ingestion pipeline (LangGraph)
+PDF/MD → MinerU parsing → multimodal image captioning → chunking
+      → embedding (dense + sparse) → Milvus indexing
+      → MinIO object storage → MongoDB records
 
+Query pipeline (LangGraph)
+user query → rewriting + entity-name extraction & confirmation
+          → ┌ vanilla hybrid vector search (dense + sparse)
+            ├ HyDE hypothetical-document retrieval
+            └ web search via MCP
+          → RRF fusion → Cross-Encoder reranking
+          → LLM generation (SSE streaming) → answer + images
+```
 
-"""
-    fastapi
-"""
-pip install fastapi
-pip install "uvicorn[standard]"
+## Features
 
+- Batch upload of PDF / MD files, stored by `date / task-ID`, with real-time progress and node-level logs
+- Parsed artifacts (Markdown, images) automatically structured; images stored in object storage and linked back
+- Session-based multi-turn Q&A with history persisted in MongoDB
+- Answers carry referenced images automatically
+- Dual-page web UI (Import / Chat) with one-click navigation
 
+## Tech Stack
 
-"""
-    清华镜像
-"""
-conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
-conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
-conda config --set show_channel_urls yes
+| Layer | Technology |
+|---|---|
+| Orchestration | LangGraph, FastAPI, BackgroundTasks |
+| Parsing | MinerU (local API), multimodal LLM captioning |
+| Embedding | BGE-M3 (dense + sparse), Milvus hybrid search |
+| Ranking | RRF, Cross-Encoder reranking (DashScope) |
+| Generation | OpenAI-compatible LLM, SSE streaming |
+| Web search | MCP protocol (Streamable HTTP) via Bailian |
+| Storage | Milvus / MongoDB / MinIO |
+| Frontend | Vanilla HTML/JS (no framework, zero build step) |
 
-"""
-    若安装minio会报错，升级版本
-"""
-python -m pip install --upgrade pip
+## Quick Start
 
+### Requirements
 
-knowledge/
-├── api/                              # API 路由层
-│   ├── query_router.py              # 查询服务路由 (port 8001)
-│   │   ├── POST /query              # 发起查询
-│   │   ├── GET /stream/{session_id} # SSE 流式获取
-│   │   ├── GET /history/{session_id}# 获取历史
-│   │   └── DELETE /history/...      # 清除历史
-│   └── import_router.py             # 导入服务路由 (port 8000)
-│       ├── POST /upload             # 上传文件
-│       └── GET /status/{task_id}    # 查询任务状态
-│
-├── core/                             # 核心配置
-│   ├── deps.py                      # 依赖注入（单例管理）
-│   └── paths.py                     # 路径常量配置
-│
-├── processor/                        # 业务处理流程（LangGraph）
-│   ├── import_processor/               # 导入流程
-│   │   ├── base.py           		 # 导入节点基类
-│   │   ├── config.py           	  # 导入流程配置管理
-│   │   ├── exceptions.py             # 导入流程自定义异常
-│   │   ├── main_graph.py           # 导入流程图定义
-│   │   ├── state.py                # 状态类型定义
-│   │   └── nodes/                  # 处理节点
-│   │       ├── node_entry.py            # 入口节点
-│   │       ├── node_pdf_to_md.py        # PDF 转 MD
-│   │       ├── node_md_img.py           # 图片处理
-│   │       ├── node_document_split.py   # 文档切分
-│   │       ├── node_item_name_recognition.py  # 商品识别
-│   │       ├── node_bge_embedding.py    # 向量嵌入
-│   │       └── node_import_milvus.py    # Milvus 存储
-│   │
-│   └── query_processor/              	# 查询流程
-│       ├── base.py           		    # 查询节点基类
-│       ├── config.py           	    # 查询流程配置管理
-│       ├── exceptions.py               # 查询流程自定义异常
-│       ├── main_graph.py           	# 查询流程图定义
-│       ├── state.py                	# 状态类型定义
-│       ├── prompt.py               	# 提示词模板
-│       └── nodes/                  	# 处理节点
-│           ├── node_item_name_confirm.py    # 商品确认
-│           ├── node_vector_search.py        # 向量检索
-│           ├── node_hyde_search.py          # HyDE 检索
-│           ├── node_web_search_mcp.py       # Web 搜索
-│           ├── node_rrf.py                  # RRF 融合
-│           ├── node_rerank.py               # 重排序
-│           └── node_answer_output.py        # 答案生成
-│
-├── schema/                          # 数据模型定义
-│   ├── query_schema.py              # 查询请求/响应模型
-│   ├── upload_schema.py             # 上传响应模型
-│   └── task_schema.py               # 任务状态模型
-│
-├── services/                        # 业务服务层
-│   ├── file_import_service.py       # 文件导入服务
-│   └── task_service.py              # 任务管理服务
-│
-├── utils/                           # 工具函数库
-│   ├── milvus_utils.py              # Milvus 向量库操作
-│   ├── embedding_utils.py           # 向量嵌入工具
-│   ├── llm_utils.py                 # LLM 客户端封装
-│   ├── reranker_utils.py            # Reranker 模型
-│   ├── mongo_history_utils.py       # MongoDB 历史记录
-│   ├── sse_utils.py                 # SSE 流式推送
-│   ├── task_utils.py                # 任务状态管理
-│   └── minio_utils.py               # MinIO 对象存储
-│
-├── front/                           # 前端页面
-│   ├── chat.html                    # 聊天界面
-│   └── import.html                  # 导入界面
-│
-├── test/                             # 测试代码
-├── docs/                             # 文档目录
-├── temp_data/                        # 临时数据目录
-├── .env                              # 环境配置文件
-├── .env.example                      # 环境配置文件模板
-├── pyproject.toml                    # Python 依赖声明
-└── uv.locl							# uv版本锁定文件
+- Python 3.11
+- NVIDIA GPU (8GB+ VRAM recommended for BGE-M3; CPU works but slower)
+- Docker: Milvus, MongoDB, MinIO
+- MinerU local parsing service (or adapt to a cloud parsing API)
 
-"""
+### Steps
+
+```bash
+# 1. Clone and install dependencies
+git clone <repo-url> && cd KeeperSage
+pip install -r requirements.txt
+
+# Note: the mcp package must be 1.x (pip install "mcp<2");
+# 2.x is protocol-incompatible with the Bailian MCP service.
+
+# 2. Start middleware (Docker)
+docker run -d -p 27017:27017 --name mongo mongo:6
+docker run -d -p 9000:9000 -p 9001:9001 --name minio minio/minio server /data --console-address ":9001"
+# Deploy Milvus standalone via its official docker-compose (port 19530)
+
+# 3. Deploy the MinerU service (listens on 127.0.0.1:8765, API path /api/v4)
+
+# 4. Configure environment variables
+cp .env.example .env   # fill in service addresses and API keys
+
+# 5. Start both services
+python web/api/import_service.py   # ingestion service, port 8000
+python web/api/query_service.py    # query service, port 8001
+```
+
+### Access
+
+- Import page: `http://127.0.0.1:8000/import.html`
+- Chat page: `http://127.0.0.1:8001/chat.html`
+
+Upload documents and wait for processing to finish before asking questions.
+
+## Project Layout
+
+```
+web/api/                      # FastAPI services (import 8000 / query 8001)
+web/page/                     # Frontend pages (import.html / chat.html)
+processor/import_processor/   # Ingestion pipeline (parse → chunk → embed → index)
+processor/query_processor/    # Query pipeline (rewrite → 3-route retrieval → RRF → rerank → generate)
+config/                       # Component configs (reads .env)
+utils/                        # Milvus / MinIO / Mongo / SSE helpers
+```
+
+## Troubleshooting
+
+- **500 on upload (`DATA_BASED_ROOT_DIR ... NoneType`)**: `DATA_BASED_ROOT_DIR` missing in `.env`, or the service was not restarted after editing.
+- **`WinError 183` when re-uploading a same-named file**: use the fixed version (renaming now overwrites via `replace`).
+- **Slow parsing of large documents**: images are captioned one by one via the multimodal LLM and subject to API rate limits.
+- **Middleware connection failures**: verify Milvus / Mongo / MinIO IPs and ports in `.env`.
+
+## Security Notes
+
+- `.env` contains secrets and is excluded via `.gitignore` — never commit it; only commit the `.env.example` template.
+- Rotate any key that may have been leaked immediately.
