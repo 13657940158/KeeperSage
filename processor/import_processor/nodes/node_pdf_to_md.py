@@ -161,7 +161,7 @@ class NodePDFToMD(BaseNode):
         target_md_file = extract_target_dir / "full.md"
         self.logger.info(f"【MD重命名】开始将full.md文件进行重命名")
         new_md_path = target_md_file.with_name(f"{pdf_stem}.md")
-        target_md_file.rename(new_md_path)
+        target_md_file.replace(new_md_path)   #  已存在则覆盖
         self.logger.info(f"【MD重命名】重命名成功，文件名：{pdf_stem}.md")
 
         return str(new_md_path.absolute())

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>SSE 极简测试</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #1e1e1e; font-family: 'Courier New', Courier, monospace; }
+        button {
+            padding: 8px 20px; font-size: 14px; color: #fff; background: #007aff;
+            border: none; border-radius: 4px; cursor: pointer; margin-bottom: 15px;
+        }
+        button:hover { background: #0056b3; }
+        #console-box {
+            background: #000; color: #0f0; padding: 15px; border-radius: 6px;
+            height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.6;
+            white-space: pre-wrap; word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <button id="btn" onclick="toggleSSE()">开始连接</button>
+    <div id="console-box"></div>
+
+    <script>
+        let es = null;
+        const box = document.getElementById('console-box');
+        const btn = document.getElementById('btn');
+
+        function log(msg, color = '#0f0') {
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const div = document.createElement('div');
+            div.style.color = color;
+            div.textContent = `[${time}] ${msg}`;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function toggleSSE() {
+            if (es) {
+                es.close();
+                es = null;
+                btn.textContent = '开始连接';
+                log('已手动断开连接', '#ff9800');
+                return;
+            }
+
+            box.innerHTML = '';
+            btn.textContent = '连接中...';
+            // 👇 指向后端8000端口的流式接口
+            es = new EventSource('http://127.0.0.1:8000/simple_stream');
+
+            es.onopen = () => {
+                log('通道已建立，等待数据...', '#ff9800');
+                btn.textContent = '断开连接';
+            };
+
+            es.onmessage = (e) => log(e.data);
+
+            es.onerror = () => {
+                log('连接异常或已结束', '#ff4d4f');
+                es.close();
+                es = null;
+                btn.textContent = '重新连接';
+            };
+        }
+    </script>
+</body>
+</html>
